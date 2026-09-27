@@ -1,0 +1,3 @@
+d /opt/inode-modern 0755 root root -
+d /opt/inode-modern/vendor 0755 root root -
+d /etc/iNode 0755 root root -

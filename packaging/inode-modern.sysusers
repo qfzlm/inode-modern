@@ -1,0 +1,3 @@
+u inode-modern-broker - "iNode Modern broker" / /usr/sbin/nologin
+u inode-modern-engine - "iNode Modern authentication engine" / /usr/sbin/nologin
+u inode-modern-mon - "iNode Modern monitor" / /usr/sbin/nologin

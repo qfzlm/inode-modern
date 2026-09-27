@@ -1,0 +1,43 @@
+# Managed by iNode Modern; vendor binaries run in pinned root-owned generation.
+[Unit]
+Description=iNode Modern vendor authentication backend
+Documentation=file:/usr/share/doc/inode-modern/README.md
+After=local-fs.target network.target inode-modern-firewall.service
+Requires=inode-modern-firewall.service
+BindsTo=inode-modern-firewall.service
+RequiresMountsFor=/opt/inode-modern/vendor
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+ConditionPathIsSymbolicLink=/opt/inode-modern/current
+
+[Service]
+User=root
+Type=notify
+NotifyAccess=main
+ExecStartPre=/usr/libexec/inode-modern/firewall_guard.sh check
+ExecStart=/usr/bin/python3 -I -B -u /usr/libexec/inode-modern/backend.py
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=45
+TimeoutStopSec=40
+KillMode=mixed
+LimitCORE=0
+UMask=0022
+RuntimeDirectory=inode-modern inode-modern-private
+RuntimeDirectoryMode=0700
+NFTSet=cgroup:inet:inode_modern_guard:allowed_cgroups
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=inode-modern-backend
+
+# Security & sandbox directives
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+NoExecPaths=/tmp /var/tmp /run/inode-modern-private
+ReadOnlyPaths=/opt/inode-modern/vendor /etc/iNode
+ReadWritePaths=/run/inode-modern /run/inode-modern-private
+
+[Install]
+WantedBy=multi-user.target

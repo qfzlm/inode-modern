@@ -1,0 +1,15 @@
+[Unit]
+Description=iNode Modern persistent firewall infrastructure
+Documentation=file:/usr/local/share/doc/inode-modern/phase4-integration.md
+DefaultDependencies=no
+After=network-pre.target
+Before=network.target inode-modern-backend.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/inode-modern/firewall_guard.sh init
+# Guard persists when the unit stops; teardown requires explicit administration.
+
+[Install]
+WantedBy=multi-user.target
