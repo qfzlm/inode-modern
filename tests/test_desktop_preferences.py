@@ -14,6 +14,7 @@ if HAS_QT:
     from inode_modern.desktop.preferences import Preferences, Wallet, StorageError
     from inode_modern.desktop.worker import Worker, LoginRequest
     from inode_modern.desktop.window import Window
+    from inode_modern.desktop.window_opendesign import Window as OpenDesignWindow
     from inode_modern.desktop.network import WiredInterface
 from inode_modern.protocol import Message, TLV
 from tools.install_desktop import install, APP_ID
@@ -130,6 +131,67 @@ class PreferencesTests(unittest.TestCase):
             worker.connect_account(request)
             self.assertEqual(self.wallet.value["password"], "private-value")
             self.assertEqual(request.password, "")
+        self.assertNotIn("private-value", repr(notices))
+
+    def test_disconnect_restores_saved_password_for_repeated_reconnects(self):
+        class Client:
+            state = 2
+            def status(self):
+                return Message(8, (TLV(14, self.state.to_bytes(4, "big")), TLV(21, bytes(4))))
+            def send(self, message):
+                self.state = 1 if message.kind == 3 else 2
+
+        self.prefs.submitted("student@ct", "private-value", True)
+        for window_class in (Window, OpenDesignWindow):
+            with self.subTest(window=window_class.__module__):
+                window = window_class()
+                self.addCleanup(window.deleteLater)
+                worker = Worker(preferences=self.prefs)
+                worker.client = Client()
+                worker.credentials_restored.connect(window.restore_credentials)
+                worker.changed.connect(window.update_state)
+                worker.command_finished.connect(window.command_finished)
+                window.disconnect_requested.connect(worker.disconnect_account)
+                window.login.connect(worker.connect_account)
+                saved = self.prefs.load()
+                self.prefs.restore_secret(saved)
+                window.restore_credentials(saved)
+                with patch("inode_modern.desktop.worker.wired_interfaces",
+                           return_value=[WiredInterface("enp5s0", True, "")]):
+                    worker.poll()
+                    for _ in range(2):
+                        window.disconnect_button.click()
+                        worker.poll()
+                        self.assertEqual(window.snapshot["phase"], "offline")
+                        self.assertEqual(window.password.text(), "private-value")
+                        self.assertTrue(window.remember.isChecked())
+                        window.connect_button.click()
+                        self.assertEqual(window.password.text(), "")
+                        worker.poll()
+                        self.assertEqual(window.snapshot["phase"], "online")
+                self.assertEqual(self.wallet.value["password"], "private-value")
+
+    def test_disconnect_without_remember_does_not_restore_or_read_wallet(self):
+        self.prefs.submitted("student@ct", "private-value", True)
+        self.prefs.set_remember(False)
+        worker = Worker(preferences=self.prefs)
+        restored = []
+        worker.credentials_restored.connect(restored.append)
+        with patch.object(self.wallet, "read") as read:
+            worker.disconnect_account()
+        read.assert_not_called()
+        self.assertEqual(restored, [])
+
+    def test_disconnect_wallet_error_still_finishes_without_exposing_secret(self):
+        self.prefs.submitted("student@ct", "private-value", True)
+        worker = Worker(preferences=self.prefs)
+        notices, finished = [], []
+        worker.notice.connect(notices.append)
+        worker.command_finished.connect(lambda: finished.append(True))
+        with patch.object(self.wallet, "read", side_effect=StorageError("无法安全保存密码")):
+            worker.disconnect_account()
+        self.assertIn("无法安全保存密码", notices)
+        self.assertEqual(finished, [True])
         self.assertNotIn("private-value", repr(notices))
 
     @unittest.skipUnless(importlib.util.find_spec("dbus"), "GUI dbus-python dependency is not installed")

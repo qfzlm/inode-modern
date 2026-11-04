@@ -52,17 +52,22 @@ class Worker(QObject):
         snapshot["interface"] = self.interface
         self.changed.emit(snapshot)
 
-    @Slot()
-    def start(self):
+    def _restore_credentials(self, *, remembered_only=False):
         if self.preferences:
             saved = None
             try:
                 saved = self.preferences.load()
+                if remembered_only and not saved.remember:
+                    return
                 self.preferences.restore_secret(saved)
             except StorageError as exc:
                 self.notice.emit(str(exc))
             if saved is not None:
                 self.credentials_restored.emit(saved)
+
+    @Slot()
+    def start(self):
+        self._restore_credentials()
         self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.poll)
@@ -166,6 +171,8 @@ class Worker(QObject):
         except (ClientError, OSError):
             self.notice.emit("断开请求发送失败，请稍后重试。")
         finally:
+            if not self.stop_requested.is_set():
+                self._restore_credentials(remembered_only=True)
             self.publish()
             self.command_finished.emit()
 
